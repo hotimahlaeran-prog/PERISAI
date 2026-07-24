@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Perisai Law Firm</title>
+<meta name="description" content="Aplikasi manajemen praktik hukum Perisai Law Firm" />
+<meta name="theme-color" content="#1B2A4A" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Perisai" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="icon" href="icon.svg" />
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: Georgia, 'Times New Roman', serif; }
+  .sans { font-family: system-ui, -apple-system, sans-serif; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo } = React;
+
+const COURT_TYPES = ["Pengadilan Agama", "Pengadilan Negeri", "PTUN", "Mahkamah Agung"];
+const LEGAL_AREAS = ["Keluarga", "Perdata", "Administrasi Negara", "Pidana"];
+const STAGES = ["Persiapan", "Pendaftaran", "Pemeriksaan", "Putusan", "Upaya Hukum", "Eksekusi", "Selesai"];
+const URGENCY = ["Normal", "Perhatian", "Mendesak"];
+const ADVOCATES = ["Anda", "Abd. Wahid, S.H.", "Esa, S.H.", "Ali Topan, S.H.", "Wildanul Khoir, S.H."];
+const ADVOCATE_DATA = {
+  "Abd. Wahid, S.H.": { birth: "Sampang, 05-12-1998", address: "Jl. Imam Bonjol No. 37, Kel. Dalpenang, Kec. Sampang", noAdvokat: "26.00636" },
+  "Esa, S.H.": { birth: "Sampang, 04-08-1999", address: "Dusun Bangsal, Desa Gunungeleh, Kec. Kedungdung", noAdvokat: "25.01740" },
+  "Ali Topan, S.H.": { birth: "Sampang, 26-12-1999", address: "Dusun Galis, Desa Lar-lar, Kec. Banyuates", noAdvokat: "25.01644" },
+  "Wildanul Khoir, S.H.": { birth: "Sampang, 20-02-1998", address: "Jl. Suhadak II RT002/RW005, Kel. Dalpenang, Kec. Sampang", noAdvokat: "25.25.33726" },
+};
+const GENDERS = ["Laki-laki", "Perempuan"];
+const REF_CATEGORIES = ["UU", "PERMA", "SEMA", "Yurisprudensi", "Lainnya"];
+const ACTIVITY_TYPES = ["FGD", "Penyuluhan", "Pendampingan", "Asesmen Kader", "Lainnya"];
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" }) : "-");
+const fmtMoney = (n) => "Rp " + (Number(n) || 0).toLocaleString("id-ID");
+const daysUntil = (d) => Math.ceil((new Date(d) - new Date(todayISO())) / 86400000);
+
+const idBlock = (p) => `Nama              : ${p.name || "____________"}
+NIK               : ${p.nik || "____________"}
+Tempat/Tgl Lahir  : ${p.birthPlace || "____"}, ${fmtDate(p.birthDate) !== "-" ? fmtDate(p.birthDate) : "____________"}
+Jenis Kelamin     : ${p.gender || "____________"}
+Agama             : ${p.religion || "____________"}
+Pekerjaan         : ${p.occupation || "____________"}
+Alamat            : ${p.address || "____________"}`;
+
+const TEMPLATES = {
+  sk: {
+    label: "Surat Kuasa Khusus",
+    courts: [],
+    build: (c, cl, adv) => `SURAT KUASA KHUSUS
+No. ${c.caseNumber || "____________"}
+
+Yang bertanda tangan di bawah ini:
+
+${idBlock(cl)}
+
+Dalam hal ini disebut sebagai --------------------------------------------- PEMBERI KUASA
+
+Dengan ini memberi kuasa penuh kepada:
+
+Nama          : ${adv.name || "____________"}
+Alamat        : ${adv.address || "____________"}
+No. Advokat   : ${adv.noAdvokat || "____________"}
+
+Advokat pada Perisai Law Firm yang berkedudukan di Sampang, untuk selanjutnya disebut --------------------------------------------- PENERIMA KUASA
+
+-------------------------------------- KHUSUS --------------------------------------
+
+Untuk mewakili dan bertindak untuk dan atas nama Pemberi Kuasa dalam perkara ${c.legalArea || "____"} pada ${c.court || "____"}, melawan ${c.opposingParty || "____________"}, dengan register perkara Nomor ${c.caseNumber || "____________"}.
+
+Kuasa ini diberikan dengan hak substitusi.
+
+Sampang, ${fmtDate(todayISO())}
+
+Penerima Kuasa                                    Pemberi Kuasa
+
+
+
+(${adv.name || "_________________"})                               (${cl.name || "____________"})`,
+  },
+  gugatanCerai: {
+    label: "Gugatan/Permohonan Cerai",
+    courts: ["Pengadilan Agama"],
+    build: (c, cl) => `Kepada Yth.
+Ketua ${c.court || "Pengadilan Agama"} Sampang
+di Sampang
+
+Perihal: Gugatan/Permohonan Cerai
+
+Dengan hormat,
+
+${idBlock(cl)}
+
+Untuk selanjutnya disebut sebagai --------------------------------------------- PENGGUGAT/PEMOHON
+
+melawan
+
+Nama    : ${c.opposingParty || "____________"}
+Alamat  : ${c.opposingAddress || "____________"}
+
+Untuk selanjutnya disebut sebagai --------------------------------------------- TERGUGAT/TERMOHON
+
+DUDUK PERKARA
+
+1. Bahwa Penggugat/Pemohon dan Tergugat/Termohon adalah pasangan suami istri yang sah, menikah pada [tanggal], sebagaimana tercatat dalam Kutipan Akta Nikah Nomor [nomor];
+2. Bahwa dari perkawinan tersebut, Penggugat/Pemohon dan Tergugat/Termohon telah/belum dikaruniai anak, yaitu: [nama dan usia anak, bila ada];
+3. Bahwa semula rumah tangga Penggugat/Pemohon dan Tergugat/Termohon berjalan rukun, namun sejak sekitar [bulan/tahun] telah terjadi perselisihan dan pertengkaran secara terus-menerus yang disebabkan oleh [uraikan sebab];
+4. Bahwa perselisihan tersebut telah mengakibatkan pisah tempat tinggal sejak [tanggal/lama waktu] dan tidak ada harapan untuk hidup rukun kembali dalam rumah tangga;
+5. Bahwa oleh karena hal-hal tersebut di atas, Penggugat/Pemohon berpendapat rumah tangga sudah tidak dapat dipertahankan lagi dan telah memenuhi alasan perceraian sebagaimana dimaksud Pasal 39 ayat (2) UU No. 1 Tahun 1974 jo. Pasal 19 huruf f PP No. 9 Tahun 1975 jo. Pasal 116 huruf f Kompilasi Hukum Islam.
+
+[Apabila terdapat kumulasi gugatan hadhanah/nafkah/harta bersama, uraikan pada bagian tersendiri sesuai Pasal 86 UU No. 7 Tahun 1989]
+
+PETITUM
+
+Berdasarkan uraian di atas, Penggugat/Pemohon memohon kepada Majelis Hakim ${c.court || "____"} agar berkenan memeriksa dan memutus perkara ini dengan amar sebagai berikut:
+1. Mengabulkan gugatan/permohonan Penggugat/Pemohon;
+2. Menjatuhkan talak satu raj'i Tergugat/Termohon terhadap Penggugat/Pemohon di depan sidang Pengadilan Agama / Menetapkan putusnya perkawinan karena perceraian antara Penggugat dan Tergugat *(pilih sesuai jenis perkara)*;
+3. Membebankan biaya perkara menurut hukum yang berlaku.
+
+Atau apabila Majelis Hakim berpendapat lain, mohon putusan yang seadil-adilnya (ex aequo et bono).
+
+Sampang, ${fmtDate(todayISO())}
+
+Hormat kami,
+Kuasa Hukum Penggugat/Pemohon`,
+  },
+  kesimpulan: {
+    label: "Surat Kesimpulan",
+    courts: [],
+    build: (c, cl) => `KESIMPULAN
+
+Perkara Nomor: ${c.caseNumber || "____________"}
+${c.court || "____"}
+
+Untuk dan atas nama: ${cl.name || "____________"}
+Melawan: ${c.opposingParty || "____________"}
+
+Dengan hormat,
+
+Berdasarkan seluruh rangkaian pemeriksaan yang telah dilalui dalam perkara ini, baik melalui bukti surat, keterangan saksi, maupun keterangan para pihak, dengan ini kami sampaikan kesimpulan sebagai berikut:
+
+I. TENTANG DUDUK PERKARA
+1. [ringkas dalil gugatan/permohonan];
+2. [ringkas bantahan/jawaban pihak lawan, bila ada];
+3. [ringkas jalannya pemeriksaan — replik, duplik, pembuktian].
+
+II. TENTANG FAKTA HUKUM YANG TERUNGKAP DI PERSIDANGAN
+1. Fakta berdasarkan bukti surat: [uraikan bukti P-1 dst/T-1 dst yang relevan];
+2. Fakta berdasarkan keterangan saksi: [uraikan keterangan saksi yang relevan];
+3. Fakta yang diakui/tidak dibantah oleh pihak lawan: [uraikan bila ada].
+
+III. TENTANG ANALISIS YURIDIS
+1. [uraikan dasar hukum dan penerapannya terhadap fakta yang terungkap];
+2. [uraikan mengapa dalil Penggugat/Pemohon telah terbukti secara sah dan meyakinkan sesuai hukum acara yang berlaku].
+
+IV. KESIMPULAN
+Berdasarkan uraian fakta dan analisis yuridis di atas, kami selaku kuasa hukum ${cl.name || "____________"} memohon kepada Majelis Hakim yang memeriksa dan mengadili perkara ini untuk mengabulkan gugatan/permohonan Klien kami untuk seluruhnya, atau setidak-tidaknya memberikan putusan yang seadil-adilnya.
+
+Sampang, ${fmtDate(todayISO())}
+
+Hormat kami,
+Kuasa Hukum ${cl.name || "____________"}`,
+  },
+  legalOpinion: {
+    label: "Legal Opinion",
+    courts: [],
+    build: (c, cl) => `LEGAL OPINION
+
+Perihal      : Analisis Hukum atas Perkara ${cl.name || "____________"}
+Nomor Perkara: ${c.caseNumber || "____________"}
+Bidang Hukum : ${c.legalArea || "____"}
+Forum        : ${c.court || "____"}
+Tanggal      : ${fmtDate(todayISO())}
+
+I. DUDUK PERKARA
+1. [ringkas kronologi peristiwa yang relevan secara berurutan];
+2. [uraikan posisi/kepentingan klien dalam peristiwa tersebut];
+3. [uraikan pihak-pihak lain yang terlibat, termasuk ${c.opposingParty || "pihak lawan"}].
+
+II. ISU HUKUM
+1. [rumuskan isu hukum pertama yang perlu dianalisis];
+2. [rumuskan isu hukum kedua, bila ada].
+
+III. DASAR HUKUM
+[sebutkan peraturan perundang-undangan, yurisprudensi, dan SEMA/PERMA yang relevan — dapat ditarik langsung dari modul Referensi Hukum]
+
+IV. ANALISIS
+1. [uraikan penerapan dasar hukum pada butir III terhadap fakta pada butir I];
+2. [uraikan kekuatan dan kelemahan posisi hukum klien secara objektif];
+3. [uraikan risiko hukum yang mungkin timbul].
+
+V. KESIMPULAN DAN REKOMENDASI
+1. Kesimpulan: [rumuskan simpulan atas isu hukum yang dianalisis];
+2. Rekomendasi: [rumuskan langkah hukum yang disarankan bagi klien].
+
+Sampang, ${fmtDate(todayISO())}
+
+Disusun oleh,
+Perisai Law Firm`,
+  },
+  derdenVerzet: {
+    label: "Derden Verzet",
+    courts: ["Pengadilan Negeri"],
+    build: (c, cl) => `PERLAWANAN PIHAK KETIGA (DERDEN VERZET)
+
+Kepada Yth.
+Ketua ${c.court || "Pengadilan Negeri"} Sampang
+di Sampang
+
+Perihal: Perlawanan Pihak Ketiga terhadap Eksekusi dalam Perkara Nomor ${c.caseNumber || "____________"}
+
+Dengan hormat,
+
+${idBlock(cl)}
+
+Untuk selanjutnya disebut sebagai --------------------------------------------- PELAWAN
+
+Dengan ini mengajukan perlawanan (derden verzet) terhadap pelaksanaan eksekusi yang dimohonkan oleh:
+
+Nama    : ${c.opposingParty || "____________"}
+Alamat  : ${c.opposingAddress || "____________"}
+
+Untuk selanjutnya disebut sebagai --------------------------------------------- TERLAWAN
+
+DUDUK PERKARA
+
+1. Bahwa Terlawan telah memperoleh penetapan/putusan yang memerintahkan eksekusi atas objek [uraikan objek eksekusi];
+2. Bahwa Pelawan adalah pihak ketiga yang mempunyai hak kepemilikan/penguasaan yang sah atas objek eksekusi tersebut, sebagaimana dibuktikan dengan [uraikan bukti kepemilikan];
+3. Bahwa objek eksekusi bukan merupakan harta/objek yang menjadi bagian dari perkara pokok antara Terlawan dengan pihak yang dieksekusi;
+4. Bahwa oleh karena itu, mohon kepada Ketua Pengadilan agar eksekusi ditunda sampai dengan perlawanan ini diputus.
+
+PETITUM
+
+Berdasarkan uraian di atas, Pelawan memohon kepada Majelis Hakim yang memeriksa perkara ini agar berkenan memutus:
+1. Menerima dan mengabulkan perlawanan Pelawan untuk seluruhnya;
+2. Menyatakan Pelawan adalah pelawan yang benar dan sah atas objek eksekusi;
+3. Memerintahkan penangguhan/pembatalan pelaksanaan eksekusi atas objek yang dimaksud;
+4. Membebankan biaya perkara kepada Terlawan.
+
+Sampang, ${fmtDate(todayISO())}
+
+Hormat kami,
+Kuasa Hukum Pelawan`,
+  },
+  memoriPK: {
+    label: "Memori Peninjauan Kembali (PK)",
+    courts: [],
+    build: (c, cl) => `MEMORI PENINJAUAN KEMBALI
+
+Terhadap Putusan Nomor: ${c.caseNumber || "____________"}
+${c.court || "____"}
+
+Pemohon PK: ${cl.name || "____________"}
+
+Dengan hormat,
+
+I. PENDAHULUAN
+Bahwa Pemohon PK dengan ini mengajukan permohonan Peninjauan Kembali terhadap putusan tersebut di atas yang telah berkekuatan hukum tetap.
+
+II. ALASAN-ALASAN PENINJAUAN KEMBALI
+1. [uraikan alasan pertama, mis. ditemukan bukti baru/novum yang bersifat menentukan];
+2. [uraikan alasan kedua, mis. terdapat kekhilafan hakim atau kekeliruan yang nyata];
+3. [uraikan alasan ketiga, bila ada].
+
+III. URAIAN NOVUM/BUKTI BARU (bila relevan)
+1. Jenis bukti: [uraikan];
+2. Alasan bukti tersebut belum dapat diajukan pada pemeriksaan sebelumnya: [uraikan];
+3. Relevansi bukti terhadap amar putusan: [uraikan].
+
+IV. KESIMPULAN DAN PERMOHONAN
+Berdasarkan alasan-alasan tersebut di atas, Pemohon PK memohon kepada Mahkamah Agung Republik Indonesia agar berkenan:
+1. Menerima dan mengabulkan permohonan Peninjauan Kembali ini;
+2. Membatalkan putusan yang dimohonkan Peninjauan Kembali;
+3. Mengadili sendiri dengan amar yang seadil-adilnya bagi Pemohon PK.
+
+Sampang, ${fmtDate(todayISO())}
+
+Hormat kami,
+Kuasa Hukum Pemohon PK`,
+  },
+  somasi: {
+    label: "Somasi",
+    courts: [],
+    build: (c, cl) => `SOMASI
+
+Kepada Yth.
+${c.opposingParty || "____________"}
+${c.opposingAddress || ""}
+
+Perihal: Somasi sehubungan dengan perkara ${c.legalArea || "____"}
+
+Dengan hormat,
+
+Kami, Advokat pada Perisai Law Firm, bertindak untuk dan atas nama klien kami, ${cl.name || "____________"}, dengan ini menyampaikan somasi/teguran sehubungan dengan hal-hal terkait perkara Nomor ${c.caseNumber || "____________"} pada ${c.court || "____"}.
+
+Kami meminta agar Saudara memberikan tanggapan dalam waktu 7 (tujuh) hari kalender sejak diterimanya surat ini.
+
+Demikian somasi ini disampaikan, atas perhatiannya kami ucapkan terima kasih.
+
+Sampang, ${fmtDate(todayISO())}
+
+Hormat kami,
+Perisai Law Firm`,
+  },
+  keberatan: {
+    label: "Surat Keberatan (PTUN)",
+    courts: ["PTUN"],
+    build: (c, cl) => `SURAT KEBERATAN ADMINISTRATIF
+
+Kepada Yth.
+Pejabat Tata Usaha Negara terkait
+
+Perihal: Keberatan atas Keputusan dalam perkara Nomor ${c.caseNumber || "____________"}
+
+Dengan hormat,
+
+Yang bertanda tangan di bawah ini, Advokat pada Perisai Law Firm, bertindak untuk dan atas nama ${cl.name || "____________"}, mengajukan keberatan administratif sebagaimana diatur dalam UU No. 30 Tahun 2014 dan Perma No. 6 Tahun 2018, atas keputusan yang menjadi objek sengketa dalam perkara ini.
+
+Sampang, ${fmtDate(todayISO())}
+
+Hormat kami,
+Perisai Law Firm`,
+  },
+  undangan: {
+    label: "Surat Undangan Kegiatan",
+    build: (a) => `SURAT UNDANGAN
+
+Perihal: Undangan ${a.type || "Kegiatan"} — ${a.title || "____________"}
+
+Kepada Yth.
+Bapak/Ibu/Saudara/i
+di tempat
+
+Dengan hormat,
+
+Sehubungan dengan pelaksanaan kegiatan "${a.title || "____________"}" yang akan diselenggarakan oleh LPBHNU Kabupaten Sampang pada:
+
+Hari/Tanggal : ${fmtDate(a.date)}
+Tempat       : ${a.location || "____________"}
+
+Kami mengundang Bapak/Ibu/Saudara/i untuk hadir dan berpartisipasi dalam kegiatan tersebut.
+
+Demikian undangan ini disampaikan, atas perhatian dan kehadirannya kami ucapkan terima kasih.
+
+Sampang, ${fmtDate(todayISO())}
+
+Panitia Pelaksana`,
+  },
+};
+
+function useStore(key, initial) {
+  const [data, setData] = useState(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : initial;
+    } catch (e) { return initial; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) {}
+  }, [data, key]);
+  return [data, setData];
+}
+
+function Ico({ children, size = 16, className = "" }) {
+  return <span className={className} style={{ fontSize: size, lineHeight: 1, display: "inline-block" }}>{children}</span>;
+}
+const IcoStamp = (p) => <Ico {...p}>🏛</Ico>;
+const IcoUsers = (p) => <Ico {...p}>👥</Ico>;
+const IcoFile = (p) => <Ico {...p}>📄</Ico>;
+const IcoCal = (p) => <Ico {...p}>📅</Ico>;
+const IcoDash = (p) => <Ico {...p}>📊</Ico>;
+const IcoBook = (p) => <Ico {...p}>📖</Ico>;
+const IcoMega = (p) => <Ico {...p}>📣</Ico>;
+const IcoWallet = (p) => <Ico {...p}>💼</Ico>;
+const IcoPlus = (p) => <Ico {...p}>＋</Ico>;
+const IcoX = (p) => <Ico {...p}>✕</Ico>;
+const IcoWarn = (p) => <Ico {...p}>⚠</Ico>;
+const IcoChevron = (p) => <Ico {...p}>›</Ico>;
+const IcoSearch = (p) => <Ico {...p}>🔍</Ico>;
+const IcoPen = (p) => <Ico {...p}>✎</Ico>;
+const IcoLink = (p) => <Ico {...p}>↗</Ico>;
+const IcoTrash = (p) => <Ico {...p}>🗑</Ico>;
+
+function Badge({ children, tone = "default" }) {
+  const tones = {
+    default: "bg-[#EDE7D9] text-[#3A3226]",
+    urgent: "bg-[#7A2331] text-[#F7F1E6]",
+    warn: "bg-[#A8763E] text-[#F7F1E6]",
+    ok: "bg-[#2F4B3C] text-[#F7F1E6]",
+  };
+  return <span className={`px-2 py-0.5 rounded-sm text-xs font-medium tracking-wide ${tones[tone]}`}>{children}</span>;
+}
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-[#F7F4EC] max-w-lg w-full max-h-[85vh] overflow-y-auto rounded-sm shadow-2xl border border-[#D9CFB8]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#D9CFB8]">
+          <h3 className="font-serif text-lg text-[#1B2A4A]">{title}</h3>
+          <button onClick={onClose} className="text-[#6B6252] hover:text-[#1B2A4A]"><IcoX size={18} /></button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label className="block mb-3">
+      <span className="block text-xs uppercase tracking-wider text-[#6B6252] mb-1">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function MiniBars({ data, color }) {
+  const max = Math.max(1, ...data.map((d) => d.kasus));
+  return (
+    <div className="space-y-2">
+      {data.map((d) => (
+        <div key={d.name} className="flex items-center gap-2 text-xs sans">
+          <div className="w-24 truncate text-[#6B6252]">{d.name}</div>
+          <div className="flex-1 bg-[#EDE7D9] rounded-sm h-3 overflow-hidden">
+            <div className="h-3 rounded-sm" style={{ width: `${(d.kasus / max) * 100}%`, background: color }}></div>
+          </div>
+          <div className="w-5 text-right text-[#1B2A4A] font-semibold">{d.kasus}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const inputCls = "w-full border border-[#D9CFB8] bg-white px-3 py-2 text-sm text-[#1F2937] rounded-sm focus:outline-none focus:ring-2 focus:ring-[#A8763E]";
+const btnPrimary = "bg-[#A8763E] text-white py-2 rounded-sm text-sm hover:bg-[#8f6432] transition-colors";
+const btnOutline = "border border-[#1B2A4A] text-[#1B2A4A] py-2 rounded-sm text-sm hover:bg-[#1B2A4A] hover:text-white transition-colors";
+
+function App() {
+  const [clients, setClients] = useStore("clients", []);
+  const [cases, setCases] = useStore("cases", []);
+  const [deadlines, setDeadlines] = useStore("deadlines", []);
+  const [references, setReferences] = useStore("references", []);
+  const [activities, setActivities] = useStore("activities", []);
+  const [timeEntries, setTimeEntries] = useStore("timeEntries", []);
+  const [ledger, setLedger] = useStore("ledger", []);
+  const [myProfile, setMyProfile] = useStore("myProfile", { birth: "", address: "", noAdvokat: "" });
+
+  const [tab, setTab] = useState("dashboard");
+  const [showProfileForm, setShowProfileForm] = useState(false);
+  const [activeAdvocate, setActiveAdvocate] = useState(ADVOCATES[0]);
+  const [showClientForm, setShowClientForm] = useState(false);
+  const [showCaseForm, setShowCaseForm] = useState(false);
+  const [showDeadlineForm, setShowDeadlineForm] = useState(false);
+  const [showRefForm, setShowRefForm] = useState(false);
+  const [showActForm, setShowActForm] = useState(false);
+  const [showTimeForm, setShowTimeForm] = useState(false);
+  const [showLedgerForm, setShowLedgerForm] = useState(false);
+  const [conflictWarning, setConflictWarning] = useState(null);
+  const [docCaseId, setDocCaseId] = useState("");
+  const [docTemplate, setDocTemplate] = useState("sk");
+  const [docActId, setDocActId] = useState("");
+  const [search, setSearch] = useState("");
+  const [signName, setSignName] = useState("");
+  const [signAgree, setSignAgree] = useState(false);
+  const [ledgerClientId, setLedgerClientId] = useState("");
+  const [copyToast, setCopyToast] = useState(false);
+
+  const clientById = (id) => clients.find((c) => c.id === id) || {};
+  const caseById = (id) => cases.find((c) => c.id === id) || {};
+  const advocateInfo = (name) => (name === "Anda" ? { ...myProfile, name: "Anda" } : { ...(ADVOCATE_DATA[name] || {}), name });
+
+  const upcomingDeadlines = useMemo(() => [...deadlines].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)), [deadlines]);
+
+  const workloadData = useMemo(
+    () => ADVOCATES.map((a) => ({ name: a.split(",")[0], kasus: cases.filter((c) => c.advocateId === a && c.stage !== "Selesai").length })),
+    [cases]
+  );
+  const stageData = useMemo(
+    () => STAGES.map((s) => ({ name: s, kasus: cases.filter((c) => c.stage === s).length })),
+    [cases]
+  );
+
+  const relevantCases = useMemo(() => {
+    const scope = TEMPLATES[docTemplate]?.courts || [];
+    const pool = scope.length === 0 ? cases : cases.filter((c) => scope.includes(c.court));
+    const urgencyRank = { Mendesak: 0, Perhatian: 1, Normal: 2 };
+    return [...pool].sort((a, b) => (urgencyRank[a.urgency] ?? 3) - (urgencyRank[b.urgency] ?? 3) || new Date(b.createdAt) - new Date(a.createdAt));
+  }, [cases, docTemplate]);
+
+  useEffect(() => {
+    if (docTemplate === "undangan") return;
+    if (!relevantCases.some((c) => c.id === docCaseId)) {
+      setDocCaseId(relevantCases[0]?.id || "");
+    }
+  }, [docTemplate, relevantCases]);
+
+  useEffect(() => {
+    if (docTemplate === "undangan" && activities.length && !activities.some((a) => a.id === docActId)) {
+      setDocActId(activities[0].id);
+    }
+  }, [docTemplate, activities]);
+
+  const checkConflict = (name, opposing) => {
+    const hit = cases.find(
+      (c) =>
+        (opposing && clientById(c.clientId).name?.toLowerCase() === opposing.toLowerCase()) ||
+        (name && c.opposingParty?.toLowerCase() === name.toLowerCase())
+    );
+    return hit || null;
+  };
+
+  const addClient = (form) => { setClients((prev) => [...prev, { id: uid(), ...form }]); setShowClientForm(false); };
+
+  const addCase = (form) => {
+    const conflict = checkConflict(clientById(form.clientId).name, form.opposingParty);
+    if (conflict) { setConflictWarning({ conflict, form }); return; }
+    setCases((prev) => [...prev, { id: uid(), createdAt: todayISO(), ...form }]);
+    setShowCaseForm(false);
+  };
+  const confirmDespiteConflict = () => {
+    setCases((prev) => [...prev, { id: uid(), createdAt: todayISO(), ...conflictWarning.form }]);
+    setConflictWarning(null); setShowCaseForm(false);
+  };
+
+  const addDeadline = (form) => { setDeadlines((prev) => [...prev, { id: uid(), ...form }]); setShowDeadlineForm(false); };
+  const addReference = (form) => { setReferences((prev) => [...prev, { id: uid(), ...form }]); setShowRefForm(false); };
+  const addActivity = (form) => { setActivities((prev) => [...prev, { id: uid(), ...form }]); setShowActForm(false); };
+  const addTimeEntry = (form) => { setTimeEntries((prev) => [...prev, { id: uid(), ...form }]); setShowTimeForm(false); };
+  const addLedgerEntry = (form) => { setLedger((prev) => [...prev, { id: uid(), ...form }]); setShowLedgerForm(false); };
+  const removeItem = (setter) => (id) => setter((prev) => prev.filter((x) => x.id !== id));
+
+  const filteredCases = cases.filter((c) => {
+    const cl = clientById(c.clientId);
+    const q = search.toLowerCase();
+    return !q || c.caseNumber?.toLowerCase().includes(q) || cl.name?.toLowerCase().includes(q) || c.opposingParty?.toLowerCase().includes(q);
+  });
+
+  const clientLedger = (clientId) => ledger.filter((l) => l.clientId === clientId);
+  const clientBalance = (clientId) => clientLedger(clientId).reduce((sum, l) => sum + (l.type === "Setoran" ? Number(l.amount) : -Number(l.amount)), 0);
+
+  const copyText = (text) => {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => { setCopyToast(true); setTimeout(() => setCopyToast(false), 2000); });
+    }
+  };
+
+  const NAV = [
+    { id: "dashboard", label: "Dashboard", Icon: IcoDash },
+    { id: "cases", label: "Kasus & Klien", Icon: IcoUsers },
+    { id: "calendar", label: "Kalender & Tenggat", Icon: IcoCal },
+    { id: "docs", label: "Generator Dokumen", Icon: IcoFile },
+    { id: "refs", label: "Referensi Hukum", Icon: IcoBook },
+    { id: "activities", label: "Kegiatan Organisasi", Icon: IcoMega },
+    { id: "billing", label: "Billing & Dana Klien", Icon: IcoWallet },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#F7F4EC] text-[#1F2937] flex flex-col md:flex-row">
+      <aside className="bg-[#1B2A4A] text-[#F7F4EC] w-full md:w-64 flex-shrink-0 flex md:flex-col">
+        <div className="px-5 py-5 flex items-center gap-2 border-b border-white/10">
+          <IcoStamp size={22} className="text-[#A8763E]" />
+          <div>
+            <div className="font-serif text-lg leading-tight">Perisai</div>
+            <div className="sans text-[10px] uppercase tracking-widest text-[#A8763E]">Law Firm — Sampang</div>
+          </div>
+        </div>
+
+        <div className="px-5 py-3 border-b border-white/10 sans hidden md:block">
+          <label className="block text-[10px] uppercase tracking-widest text-[#8B93A8] mb-1">Masuk sebagai</label>
+          <select value={activeAdvocate} onChange={(e) => setActiveAdvocate(e.target.value)} className="w-full bg-white/10 border border-white/20 text-white text-sm rounded-sm px-2 py-1.5 focus:outline-none">
+            {ADVOCATES.map((a) => <option key={a} value={a} className="text-[#1F2937]">{a}</option>)}
+          </select>
+          {activeAdvocate === "Anda" && (
+            <button onClick={() => setShowProfileForm(true)} className="mt-2 text-[11px] text-[#A8763E] hover:underline">Lengkapi identitas Anda →</button>
+          )}
+        </div>
+
+        <nav className="flex md:flex-col flex-1 sans overflow-x-auto">
+          {NAV.map((n) => (
+            <button key={n.id} onClick={() => setTab(n.id)}
+              className={`flex items-center gap-3 px-5 py-3 text-sm text-left border-l-4 whitespace-nowrap transition-colors ${tab === n.id ? "bg-white/10 border-[#A8763E] text-white" : "border-transparent text-[#C9C2AE] hover:bg-white/5"}`}>
+              <n.Icon size={16} />{n.label}
+            </button>
+          ))}
+        </nav>
+        <div className="hidden md:block px-5 py-3 text-[10px] text-[#6E7A94] sans border-t border-white/10">
+          Data tersimpan langsung di perangkat ini (localStorage), tidak terkirim ke server mana pun.
+        </div>
+      </aside>
+
+      <main className="flex-1 p-5 md:p-8 overflow-x-hidden">
+        {tab === "dashboard" && (
+          <section>
+            <h1 className="font-serif text-2xl text-[#1B2A4A] mb-1">Ringkasan</h1>
+            <p className="sans text-sm text-[#6B6252] mb-6">{fmtDate(todayISO())}</p>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+              {[
+                { label: "Kasus Aktif", value: cases.filter((c) => c.stage !== "Selesai").length },
+                { label: "Klien", value: clients.length },
+                { label: "Tenggat 7 Hari", value: upcomingDeadlines.filter((d) => daysUntil(d.dueDate) <= 7 && daysUntil(d.dueDate) >= 0).length },
+                { label: "Mendesak", value: cases.filter((c) => c.urgency === "Mendesak").length },
+              ].map((s) => (
+                <div key={s.label} className="bg-white border border-[#D9CFB8] rounded-sm p-4">
+                  <div className="font-serif text-3xl text-[#1B2A4A]">{s.value}</div>
+                  <div className="sans text-xs uppercase tracking-wider text-[#6B6252] mt-1">{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-5 mb-8">
+              <div className="bg-white border border-[#D9CFB8] rounded-sm p-4">
+                <h2 className="font-serif text-base text-[#1B2A4A] mb-3">Beban Kasus per Advokat</h2>
+                <MiniBars data={workloadData} color="#A8763E" />
+              </div>
+              <div className="bg-white border border-[#D9CFB8] rounded-sm p-4">
+                <h2 className="font-serif text-base text-[#1B2A4A] mb-3">Kasus per Tahapan</h2>
+                <MiniBars data={stageData} color="#1B2A4A" />
+              </div>
+            </div>
+
+            <h2 className="font-serif text-lg text-[#1B2A4A] mb-3">Tenggat Terdekat</h2>
+            <div className="bg-white border border-[#D9CFB8] rounded-sm divide-y divide-[#EDE7D9]">
+              {upcomingDeadlines.length === 0 && <div className="p-4 sans text-sm text-[#6B6252]">Belum ada tenggat tercatat.</div>}
+              {upcomingDeadlines.slice(0, 6).map((d) => {
+                const dleft = daysUntil(d.dueDate);
+                return (
+                  <div key={d.id} className="p-4 flex items-center justify-between sans text-sm">
+                    <div>
+                      <div className="text-[#1F2937]">{d.title}</div>
+                      <div className="text-xs text-[#6B6252] mono">{caseById(d.caseId).caseNumber || "-"} · {fmtDate(d.dueDate)}</div>
+                    </div>
+                    <Badge tone={dleft < 0 ? "urgent" : dleft <= 3 ? "urgent" : dleft <= 7 ? "warn" : "default"}>
+                      {dleft < 0 ? `Lewat ${-dleft} hari` : dleft === 0 ? "Hari ini" : `H-${dleft}`}
+                    </Badge>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {tab === "cases" && (
+          <section>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <h1 className="font-serif text-2xl text-[#1B2A4A]">Kasus & Klien</h1>
+              <div className="flex gap-2 sans">
+                <button onClick={() => setShowClientForm(true)} className={`flex items-center gap-1 px-3 py-2 text-sm ${btnOutline}`}><IcoPlus size={14} /> Klien</button>
+                <button onClick={() => setShowCaseForm(true)} className={`flex items-center gap-1 px-3 py-2 text-sm ${btnPrimary}`}><IcoPlus size={14} /> Kasus</button>
+              </div>
+            </div>
+
+            <div className="relative mb-4 sans">
+              <IcoSearch size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B6252]" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nomor perkara, klien, atau pihak lawan…" className={`${inputCls} pl-9`} />
+            </div>
+
+            <div className="space-y-2">
+              {filteredCases.length === 0 && <div className="sans text-sm text-[#6B6252] bg-white border border-[#D9CFB8] rounded-sm p-4">Belum ada kasus. Tambahkan klien lalu kasus baru.</div>}
+              {filteredCases.map((c) => {
+                const cl = clientById(c.clientId);
+                return (
+                  <div key={c.id} className="bg-white border border-[#D9CFB8] rounded-sm p-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="sans">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="mono text-sm text-[#1B2A4A] font-semibold">{c.caseNumber}</span>
+                        <Badge tone={c.urgency === "Mendesak" ? "urgent" : c.urgency === "Perhatian" ? "warn" : "default"}>{c.urgency}</Badge>
+                        {c.advocateId && <Badge>{c.advocateId}</Badge>}
+                      </div>
+                      <div className="text-sm text-[#3A3226] mt-1">{cl.name} <span className="text-[#6B6252]">vs</span> {c.opposingParty || "—"}</div>
+                      <div className="text-xs text-[#6B6252] mt-1">{c.court} · {c.legalArea} · Tahap: {c.stage}</div>
+                    </div>
+                    <IcoChevron size={16} className="text-[#A8763E]" />
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {tab === "calendar" && (
+          <section>
+            <div className="flex items-center justify-between mb-5">
+              <h1 className="font-serif text-2xl text-[#1B2A4A]">Kalender & Tenggat</h1>
+              <button onClick={() => setShowDeadlineForm(true)} className={`flex items-center gap-1 px-3 py-2 text-sm sans ${btnPrimary}`}><IcoPlus size={14} /> Tenggat</button>
+            </div>
+            <div className="bg-white border border-[#D9CFB8] rounded-sm divide-y divide-[#EDE7D9]">
+              {upcomingDeadlines.length === 0 && <div className="p-4 sans text-sm text-[#6B6252]">Belum ada tenggat.</div>}
+              {upcomingDeadlines.map((d) => {
+                const dleft = daysUntil(d.dueDate);
+                return (
+                  <div key={d.id} className="p-4 flex items-center justify-between sans text-sm">
+                    <div>
+                      <div className="text-[#1F2937]">{d.title}</div>
+                      <div className="text-xs text-[#6B6252] mono">{caseById(d.caseId).caseNumber || "Umum"} · {fmtDate(d.dueDate)}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={dleft < 0 ? "urgent" : dleft <= 3 ? "urgent" : dleft <= 7 ? "warn" : "default"}>
+                        {dleft < 0 ? `Lewat ${-dleft} hari` : dleft === 0 ? "Hari ini" : `H-${dleft}`}
+                      </Badge>
+                      <button onClick={() => removeItem(setDeadlines)(d.id)} className="text-[#6B6252] hover:text-[#7A2331]"><IcoTrash size={14} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {tab === "docs" && (
+          <section>
+            <h1 className="font-serif text-2xl text-[#1B2A4A] mb-5">Generator Dokumen</h1>
+            <div className="bg-white border border-[#D9CFB8] rounded-sm p-5 mb-5 sans">
+              <Field label="Jenis Dokumen">
+                <select className={inputCls} value={docTemplate} onChange={(e) => setDocTemplate(e.target.value)}>
+                  {Object.entries(TEMPLATES).map(([k, t]) => <option key={k} value={k}>{t.label}</option>)}
+                </select>
+              </Field>
+              {docTemplate !== "undangan" ? (
+                <Field label={`Kasus (otomatis dipersempit ke: ${TEMPLATES[docTemplate].courts?.length ? TEMPLATES[docTemplate].courts.join(", ") : "semua pengadilan"})`}>
+                  <select className={inputCls} value={docCaseId} onChange={(e) => setDocCaseId(e.target.value)}>
+                    {relevantCases.length === 0 && <option value="">— tidak ada kasus yang cocok —</option>}
+                    {relevantCases.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.caseNumber} — {clientById(c.clientId).name} {c.urgency === "Mendesak" ? "· Mendesak" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {relevantCases.length > 0 && (
+                    <span className="text-xs text-[#6B6252] mt-1 block">Terpilih otomatis: kasus paling mendesak/terbaru yang sesuai jenis dokumen ini. Ubah bila perlu.</span>
+                  )}
+                </Field>
+              ) : (
+                <Field label="Pilih Kegiatan">
+                  <select className={inputCls} value={docActId} onChange={(e) => setDocActId(e.target.value)}>
+                    <option value="">— pilih kegiatan —</option>
+                    {activities.map((a) => <option key={a.id} value={a.id}>{a.title}</option>)}
+                  </select>
+                </Field>
+              )}
+            </div>
+
+            {(docTemplate === "undangan" ? docActId : docCaseId) ? (
+              <div>
+                <div className="flex justify-between items-center mb-2 sans">
+                  <span className="text-xs uppercase tracking-wider text-[#6B6252]">Pratinjau — format ekspor akhir: Times New Roman 12pt, A4, spasi 1.5</span>
+                  <button
+                    onClick={() => {
+                      const base = docTemplate === "undangan" ? activities.find((a) => a.id === docActId) : caseById(docCaseId);
+                      const cl = docTemplate === "undangan" ? {} : clientById(caseById(docCaseId).clientId);
+                      const adv = docTemplate === "undangan" ? {} : advocateInfo(base.advocateId || activeAdvocate);
+                      let text = TEMPLATES[docTemplate].build(base, cl, adv);
+                      if (signAgree && signName) {
+                        text += `\n\n---\nDitandatangani secara elektronik oleh ${signName} pada ${fmtDate(todayISO())}.\nCatatan: tanda tangan elektronik ini belum tersertifikasi (non-BSrE); gunakan tanda tangan basah atau e-signature tersertifikasi untuk keperluan pengadilan.`;
+                      }
+                      copyText(text);
+                    }}
+                    className={`text-xs px-3 py-1.5 ${btnOutline}`}
+                  >
+                    Salin Teks
+                  </button>
+                </div>
+                <pre className="bg-white border border-[#D9CFB8] rounded-sm p-6 whitespace-pre-wrap text-sm leading-relaxed">
+                  {(() => {
+                    const base = docTemplate === "undangan" ? activities.find((a) => a.id === docActId) : caseById(docCaseId);
+                    const cl = docTemplate === "undangan" ? {} : clientById(caseById(docCaseId).clientId);
+                    const adv = docTemplate === "undangan" ? {} : advocateInfo(base.advocateId || activeAdvocate);
+                    return TEMPLATES[docTemplate].build(base, cl, adv);
+                  })()}
+                </pre>
+
+                <div className="mt-5 bg-white border border-[#D9CFB8] rounded-sm p-5 sans">
+                  <div className="flex items-center gap-2 mb-3">
+                    <IcoPen size={16} className="text-[#A8763E]" />
+                    <h3 className="font-serif text-base text-[#1B2A4A]">Tanda Tangan Elektronik (uji coba)</h3>
+                  </div>
+                  <Field label="Nama Penandatangan">
+                    <input className={inputCls} value={signName} onChange={(e) => setSignName(e.target.value)} placeholder={activeAdvocate} />
+                  </Field>
+                  <label className="flex items-start gap-2 text-xs text-[#6B6252] mb-2">
+                    <input type="checkbox" checked={signAgree} onChange={(e) => setSignAgree(e.target.checked)} className="mt-0.5" />
+                    Saya menyetujui isi dokumen ini dan membubuhkan tanda tangan elektronik di atas.
+                  </label>
+                  <p className="text-xs text-[#7A2331]">Ini bukan tanda tangan elektronik tersertifikasi. Untuk dokumen yang diajukan ke pengadilan, gunakan tanda tangan basah atau penyelenggara e-signature tersertifikasi (mis. BSrE/Kominfo).</p>
+                </div>
+              </div>
+            ) : (
+              <div className="sans text-sm text-[#6B6252]">Pilih data untuk melihat pratinjau dokumen dengan data terisi otomatis.</div>
+            )}
+          </section>
+        )}
+
+        {tab === "refs" && (
+          <section>
+            <div className="flex items-center justify-between mb-5">
+              <h1 className="font-serif text-2xl text-[#1B2A4A]">Referensi Hukum</h1>
+              <button onClick={() => setShowRefForm(true)} className={`flex items-center gap-1 px-3 py-2 text-sm sans ${btnPrimary}`}><IcoPlus size={14} /> Referensi</button>
+            </div>
+            <div className="space-y-2">
+              {references.length === 0 && <div className="sans text-sm text-[#6B6252] bg-white border border-[#D9CFB8] rounded-sm p-4">Belum ada referensi tersimpan.</div>}
+              {references.map((r) => (
+                <div key={r.id} className="bg-white border border-[#D9CFB8] rounded-sm p-4 sans">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge>{r.category}</Badge>
+                      <span className="text-sm font-semibold text-[#1B2A4A]">{r.title}</span>
+                      {caseById(r.caseId).caseNumber && <span className="mono text-xs text-[#6B6252]">→ {caseById(r.caseId).caseNumber}</span>}
+                    </div>
+                    <button onClick={() => removeItem(setReferences)(r.id)} className="text-[#6B6252] hover:text-[#7A2331]"><IcoTrash size={14} /></button>
+                  </div>
+                  {r.notes && <p className="text-sm text-[#3A3226] mt-2">{r.notes}</p>}
+                  {r.url && <a href={r.url} target="_blank" rel="noreferrer" className="text-xs text-[#A8763E] flex items-center gap-1 mt-2 hover:underline"><IcoLink size={12} /> {r.url}</a>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {tab === "activities" && (
+          <section>
+            <div className="flex items-center justify-between mb-5">
+              <h1 className="font-serif text-2xl text-[#1B2A4A]">Kegiatan Organisasi</h1>
+              <button onClick={() => setShowActForm(true)} className={`flex items-center gap-1 px-3 py-2 text-sm sans ${btnPrimary}`}><IcoPlus size={14} /> Kegiatan</button>
+            </div>
+            <div className="space-y-2">
+              {activities.length === 0 && <div className="sans text-sm text-[#6B6252] bg-white border border-[#D9CFB8] rounded-sm p-4">Belum ada kegiatan tercatat.</div>}
+              {activities.map((a) => (
+                <div key={a.id} className="bg-white border border-[#D9CFB8] rounded-sm p-4 sans flex items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2"><Badge>{a.type}</Badge><span className="text-sm font-semibold text-[#1B2A4A]">{a.title}</span></div>
+                    <div className="text-xs text-[#6B6252] mt-1">{fmtDate(a.date)} · {a.location}</div>
+                  </div>
+                  <button onClick={() => removeItem(setActivities)(a.id)} className="text-[#6B6252] hover:text-[#7A2331]"><IcoTrash size={14} /></button>
+                </div>
+              ))}
+            </div>
+            <p className="sans text-xs text-[#6B6252] mt-3">Tips: gunakan tab Generator Dokumen → "Surat Undangan Kegiatan" untuk membuat surat undangan dari kegiatan yang dicatat di sini.</p>
+          </section>
+        )}
+
+        {tab === "billing" && (
+          <section>
+            <h1 className="font-serif text-2xl text-[#1B2A4A] mb-5">Billing & Rekening Dana Klien</h1>
+
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-serif text-lg text-[#1B2A4A]">Catatan Waktu Kerja</h2>
+              <button onClick={() => setShowTimeForm(true)} className={`flex items-center gap-1 px-3 py-1.5 text-xs sans ${btnOutline}`}><IcoPlus size={13} /> Waktu</button>
+            </div>
+            <div className="bg-white border border-[#D9CFB8] rounded-sm divide-y divide-[#EDE7D9] mb-3">
+              {timeEntries.length === 0 && <div className="p-4 sans text-sm text-[#6B6252]">Belum ada catatan waktu.</div>}
+              {timeEntries.map((t) => (
+                <div key={t.id} className="p-3 flex items-center justify-between sans text-sm">
+                  <div>
+                    <span className="mono text-xs text-[#6B6252]">{caseById(t.caseId).caseNumber || "-"}</span>
+                    <div>{t.description} — {t.hours} jam × {fmtMoney(t.rate)}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-[#1B2A4A]">{fmtMoney(t.hours * t.rate)}</span>
+                    <button onClick={() => removeItem(setTimeEntries)(t.id)} className="text-[#6B6252] hover:text-[#7A2331]"><IcoTrash size={14} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {timeEntries.length > 0 && (
+              <p className="sans text-sm text-[#3A3226] mb-8">Total tagihan tercatat: <span className="font-semibold">{fmtMoney(timeEntries.reduce((s, t) => s + t.hours * t.rate, 0))}</span></p>
+            )}
+
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-serif text-lg text-[#1B2A4A]">Rekening Dana Klien (Titipan)</h2>
+              <button onClick={() => setShowLedgerForm(true)} className={`flex items-center gap-1 px-3 py-1.5 text-xs sans ${btnOutline}`}><IcoPlus size={13} /> Catatan</button>
+            </div>
+            <div className="sans mb-3">
+              <select className={inputCls} value={ledgerClientId} onChange={(e) => setLedgerClientId(e.target.value)}>
+                <option value="">— pilih klien untuk lihat saldo —</option>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            {ledgerClientId && (
+              <div className="bg-white border border-[#D9CFB8] rounded-sm p-4 mb-3 sans">
+                <div className="text-sm text-[#6B6252]">Saldo titipan saat ini</div>
+                <div className="font-serif text-2xl text-[#1B2A4A]">{fmtMoney(clientBalance(ledgerClientId))}</div>
+              </div>
+            )}
+            <div className="bg-white border border-[#D9CFB8] rounded-sm divide-y divide-[#EDE7D9]">
+              {ledger.filter((l) => !ledgerClientId || l.clientId === ledgerClientId).length === 0 && (
+                <div className="p-4 sans text-sm text-[#6B6252]">Belum ada catatan dana.</div>
+              )}
+              {ledger.filter((l) => !ledgerClientId || l.clientId === ledgerClientId).map((l) => (
+                <div key={l.id} className="p-3 flex items-center justify-between sans text-sm">
+                  <div>
+                    <span className="text-[#3A3226]">{clientById(l.clientId).name}</span> — {l.note}
+                    <div className="text-xs text-[#6B6252]">{fmtDate(l.date)}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={l.type === "Setoran" ? "ok" : "warn"}>{l.type === "Setoran" ? "+" : "−"} {fmtMoney(l.amount)}</Badge>
+                    <button onClick={() => removeItem(setLedger)(l.id)} className="text-[#6B6252] hover:text-[#7A2331]"><IcoTrash size={14} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="sans text-xs text-[#7A2331] mt-3">Catatan ini adalah pembukuan sederhana, bukan sistem akuntansi/perbankan resmi.</p>
+          </section>
+        )}
+      </main>
+
+      {showClientForm && (
+        <Modal title="Klien Baru" onClose={() => setShowClientForm(false)}>
+          <form className="sans" onSubmit={(e) => {
+            e.preventDefault(); const f = new FormData(e.target);
+            addClient({
+              name: f.get("name"), nik: f.get("nik"), birthPlace: f.get("birthPlace"), birthDate: f.get("birthDate"),
+              gender: f.get("gender"), religion: f.get("religion"), occupation: f.get("occupation"),
+              address: f.get("address"), phone: f.get("phone"),
+            });
+          }}>
+            <Field label="Nama Lengkap"><input required name="name" className={inputCls} /></Field>
+            <Field label="NIK"><input name="nik" className={inputCls} maxLength={16} placeholder="16 digit sesuai KTP" /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Tempat Lahir"><input name="birthPlace" className={inputCls} /></Field>
+              <Field label="Tanggal Lahir"><input type="date" name="birthDate" className={inputCls} /></Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Jenis Kelamin"><select name="gender" className={inputCls}>{GENDERS.map((g) => <option key={g}>{g}</option>)}</select></Field>
+              <Field label="Agama"><input name="religion" className={inputCls} placeholder="mis. Islam" /></Field>
+            </div>
+            <Field label="Pekerjaan"><input name="occupation" className={inputCls} /></Field>
+            <Field label="Alamat Lengkap (sesuai KTP)"><textarea name="address" rows={2} className={inputCls} /></Field>
+            <Field label="No. HP"><input name="phone" className={inputCls} /></Field>
+            <button className={`w-full mt-2 ${btnPrimary}`}>Simpan Klien</button>
+          </form>
+        </Modal>
+      )}
+
+      {showCaseForm && (
+        <Modal title="Kasus Baru" onClose={() => setShowCaseForm(false)}>
+          <form className="sans" onSubmit={(e) => {
+            e.preventDefault(); const f = new FormData(e.target);
+            addCase({ caseNumber: f.get("caseNumber"), clientId: f.get("clientId"), opposingParty: f.get("opposingParty"), opposingAddress: f.get("opposingAddress"), court: f.get("court"), legalArea: f.get("legalArea"), stage: f.get("stage"), urgency: f.get("urgency"), advocateId: f.get("advocateId") });
+          }}>
+            <Field label="Nomor Perkara"><input required name="caseNumber" className={inputCls} placeholder="mis. 123/Pdt.G/2026/PA.Spg" /></Field>
+            <Field label="Klien"><select required name="clientId" className={inputCls}><option value="">— pilih klien —</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+            <Field label="Nama Pihak Lawan"><input name="opposingParty" className={inputCls} placeholder="Tergugat/Termohon/Pihak Lawan" /></Field>
+            <Field label="Alamat Pihak Lawan"><textarea name="opposingAddress" rows={2} className={inputCls} /></Field>
+            <Field label="Pengadilan"><select name="court" className={inputCls}>{COURT_TYPES.map((c) => <option key={c}>{c}</option>)}</select></Field>
+            <Field label="Bidang Hukum"><select name="legalArea" className={inputCls}>{LEGAL_AREAS.map((c) => <option key={c}>{c}</option>)}</select></Field>
+            <Field label="Tahapan"><select name="stage" className={inputCls}>{STAGES.map((c) => <option key={c}>{c}</option>)}</select></Field>
+            <Field label="Urgensi"><select name="urgency" className={inputCls}>{URGENCY.map((c) => <option key={c}>{c}</option>)}</select></Field>
+            <Field label="Advokat Penanggung Jawab"><select name="advocateId" className={inputCls} defaultValue={activeAdvocate}>{ADVOCATES.map((a) => <option key={a}>{a}</option>)}</select></Field>
+            {clients.length === 0 && <p className="text-xs text-[#7A2331] mb-2">Tambahkan klien terlebih dahulu.</p>}
+            <button disabled={clients.length === 0} className={`w-full mt-2 disabled:opacity-40 ${btnPrimary}`}>Simpan Kasus</button>
+          </form>
+        </Modal>
+      )}
+
+      {conflictWarning && (
+        <Modal title="Potensi Konflik Kepentingan" onClose={() => setConflictWarning(null)}>
+          <div className="sans text-sm">
+            <div className="flex items-start gap-2 bg-[#F7ECEC] border border-[#7A2331]/30 rounded-sm p-3 mb-4">
+              <IcoWarn size={18} className="text-[#7A2331] flex-shrink-0 mt-0.5" />
+              <p className="text-[#5C1A24]">Nama yang tercatat di kasus ini juga muncul pada perkara <span className="mono font-semibold">{conflictWarning.conflict.caseNumber}</span>, kemungkinan sebagai pihak berbeda. Periksa dahulu sebelum melanjutkan.</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setConflictWarning(null)} className={`flex-1 ${btnOutline}`}>Batalkan</button>
+              <button onClick={confirmDespiteConflict} className="flex-1 bg-[#7A2331] text-white py-2 rounded-sm text-sm hover:bg-[#651c27]">Lanjutkan Tetap</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showDeadlineForm && (
+        <Modal title="Tenggat Baru" onClose={() => setShowDeadlineForm(false)}>
+          <form className="sans" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.target); addDeadline({ title: f.get("title"), dueDate: f.get("dueDate"), caseId: f.get("caseId") }); }}>
+            <Field label="Judul Tenggat"><input required name="title" className={inputCls} placeholder="mis. Batas keberatan administratif" /></Field>
+            <Field label="Tanggal"><input required type="date" name="dueDate" className={inputCls} /></Field>
+            <Field label="Kaitkan dengan Kasus (opsional)"><select name="caseId" className={inputCls}><option value="">— umum —</option>{cases.map((c) => <option key={c.id} value={c.id}>{c.caseNumber}</option>)}</select></Field>
+            <button className={`w-full mt-2 ${btnPrimary}`}>Simpan Tenggat</button>
+          </form>
+        </Modal>
+      )}
+
+      {showRefForm && (
+        <Modal title="Referensi Hukum Baru" onClose={() => setShowRefForm(false)}>
+          <form className="sans" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.target); addReference({ title: f.get("title"), category: f.get("category"), url: f.get("url"), notes: f.get("notes"), caseId: f.get("caseId") }); }}>
+            <Field label="Judul/Nomor Peraturan"><input required name="title" className={inputCls} placeholder="mis. SEMA No. 3 Tahun 2023" /></Field>
+            <Field label="Kategori"><select name="category" className={inputCls}>{REF_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
+            <Field label="Tautan Sumber Resmi"><input name="url" className={inputCls} placeholder="https://peraturan.bpk.go.id/…" /></Field>
+            <Field label="Catatan Analisis"><textarea name="notes" rows={3} className={inputCls} /></Field>
+            <Field label="Kaitkan dengan Kasus (opsional)"><select name="caseId" className={inputCls}><option value="">—</option>{cases.map((c) => <option key={c.id} value={c.id}>{c.caseNumber}</option>)}</select></Field>
+            <button className={`w-full mt-2 ${btnPrimary}`}>Simpan Referensi</button>
+          </form>
+        </Modal>
+      )}
+
+      {showActForm && (
+        <Modal title="Kegiatan Baru" onClose={() => setShowActForm(false)}>
+          <form className="sans" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.target); addActivity({ title: f.get("title"), type: f.get("type"), date: f.get("date"), location: f.get("location") }); }}>
+            <Field label="Nama Kegiatan"><input required name="title" className={inputCls} placeholder="mis. Sampang Kabupaten Ramah Anak" /></Field>
+            <Field label="Jenis"><select name="type" className={inputCls}>{ACTIVITY_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
+            <Field label="Tanggal"><input required type="date" name="date" className={inputCls} /></Field>
+            <Field label="Lokasi"><input name="location" className={inputCls} /></Field>
+            <button className={`w-full mt-2 ${btnPrimary}`}>Simpan Kegiatan</button>
+          </form>
+        </Modal>
+      )}
+
+      {showTimeForm && (
+        <Modal title="Catatan Waktu Kerja" onClose={() => setShowTimeForm(false)}>
+          <form className="sans" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.target); addTimeEntry({ caseId: f.get("caseId"), description: f.get("description"), hours: Number(f.get("hours")), rate: Number(f.get("rate")), date: todayISO() }); }}>
+            <Field label="Kasus"><select required name="caseId" className={inputCls}><option value="">— pilih kasus —</option>{cases.map((c) => <option key={c.id} value={c.id}>{c.caseNumber}</option>)}</select></Field>
+            <Field label="Deskripsi Pekerjaan"><input required name="description" className={inputCls} placeholder="mis. Penyusunan gugatan" /></Field>
+            <Field label="Jumlah Jam"><input required type="number" step="0.5" name="hours" className={inputCls} /></Field>
+            <Field label="Tarif per Jam (Rp)"><input required type="number" name="rate" className={inputCls} /></Field>
+            <button className={`w-full mt-2 ${btnPrimary}`}>Simpan</button>
+          </form>
+        </Modal>
+      )}
+
+      {showProfileForm && (
+        <Modal title="Identitas Anda (Advokat)" onClose={() => setShowProfileForm(false)}>
+          <form className="sans" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.target); setMyProfile({ birth: f.get("birth"), address: f.get("address"), noAdvokat: f.get("noAdvokat") }); setShowProfileForm(false); }}>
+            <Field label="Tempat, Tanggal Lahir"><input name="birth" defaultValue={myProfile.birth} className={inputCls} placeholder="mis. Sampang, 01-01-1999" /></Field>
+            <Field label="Alamat"><textarea name="address" defaultValue={myProfile.address} rows={2} className={inputCls} /></Field>
+            <Field label="No. Advokat"><input name="noAdvokat" defaultValue={myProfile.noAdvokat} className={inputCls} /></Field>
+            <p className="text-xs text-[#6B6252] mb-2">Data ini dipakai otomatis pada blok tanda tangan Surat Kuasa Khusus saat Anda menjadi penerima kuasa.</p>
+            <button className={`w-full mt-2 ${btnPrimary}`}>Simpan Identitas</button>
+          </form>
+        </Modal>
+      )}
+
+      {showLedgerForm && (
+        <Modal title="Catatan Dana Klien" onClose={() => setShowLedgerForm(false)}>
+          <form className="sans" onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.target); addLedgerEntry({ clientId: f.get("clientId"), type: f.get("type"), amount: Number(f.get("amount")), note: f.get("note"), date: todayISO() }); }}>
+            <Field label="Klien"><select required name="clientId" className={inputCls}><option value="">— pilih klien —</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+            <Field label="Jenis"><select name="type" className={inputCls}><option>Setoran</option><option>Pengeluaran</option></select></Field>
+            <Field label="Jumlah (Rp)"><input required type="number" name="amount" className={inputCls} /></Field>
+            <Field label="Keterangan"><input name="note" className={inputCls} placeholder="mis. Biaya pendaftaran perkara" /></Field>
+            <button className={`w-full mt-2 ${btnPrimary}`}>Simpan</button>
+          </form>
+        </Modal>
+      )}
+
+      {copyToast && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-[#1B2A4A] text-white text-sm px-4 py-2 rounded-sm shadow-lg sans z-50">
+          Teks disalin ke clipboard
+        </div>
+      )}
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
